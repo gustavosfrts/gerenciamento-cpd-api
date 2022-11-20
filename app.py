@@ -5,17 +5,15 @@ import sys
 import Adafruit_DHT
 import RPi.GPIO as GPIO
 import serial
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from mfrc522 import SimpleMFRC522
 from dbo_schema import db
+from dbo_schema.db import get_db
 
 
 arduino = serial.Serial('/dev/ttyUSB0', 57600)
 
 app = Flask(__name__)
-
-cartoes_rfid = []
-app.debug = True
 
 app = Flask(__name__)
 app.config.from_mapping(
@@ -26,6 +24,8 @@ try:
     os.makedirs(app.instance_path)
 except OSError:
     pass
+
+app.debug = True
 db.init_app(app)
 
 @app.route('/')
@@ -99,36 +99,76 @@ def api_temperatura_umidade():
 def api_leitor_rfid():
     leitor = SimpleMFRC522()
     try:
-        id, text = leitor.read()
-        # id = 904171428764
-
-    finally:
+        numero_cartao, text = leitor.read()
+        
         GPIO.cleanup()
-        retorno = True if id in cartoes_rfid or id == 904171428764 else False
+
+        json = request.json
+        usuarioId = json['usuarioId']
+
+        db = get_db()
+
+        cartao = db.execute(
+            'SELECT * FROM cartao_rfid WHERE usuario_id=? and numero_cartao=?', (usuarioId,numero_cartao,)
+        ).fetchone()
+
+
+        retorno = True if cartao is not None else False
+
         return {
             'permitido': retorno
         }
 
+    except:
+        GPIO.cleanup()
+        
+        return {
+            'permitido': False
+        }
+
 @app.route('/api/cadastro/leitor-rfid', methods=['POST'])
 def api_cadastro_leitor_rfid():
-    leitor = SimpleMFRC522()
     try:
-        id, text = leitor.read()
-        #id = 904171428764
+        leitor = SimpleMFRC522()
 
-        if id not in cartoes_rfid:
-            cartoes_rfid.append(id)
+        json = request.json
+        usuarioId = json['usuarioId']
+
+        db = get_db()
+
+        
+        numero_cartao, text = leitor.read()
+
+        cartao = db.execute(
+            'SELECT * FROM cartao_rfid WHERE usuario_id=? and numero_cartao=?', (usuarioId,numero_cartao,)
+        ).fetchone()
+
+
+        if cartao is None:
+            
+            db.execute(
+                'insert into cartao_rfid (usuario_id, numero_cartao)'
+                'values (?, ?)',
+                (usuarioId, numero_cartao)
+            )
+
+            db.commit()
+
         else:
             GPIO.cleanup()
             return {
                 'cadastro': False,
                 'erro': "Cartão já existente."
             }
-
-    finally:
-        GPIO.cleanup()
+        
         return {
             'cadastro': True
+        }
+
+    except:
+        GPIO.cleanup()
+        return {
+            'cadastro': False
         }
 
 @app.route('/api/sensor-infravermelho', methods=['GET'])
@@ -162,6 +202,10 @@ def sensor_gas():
 def sensor_voltagem():
     valor = str(arduino.readline())
     valorGas = valor.split()
+    
+    #tratando o valor lido pelo sensor
+    valorGas[1] = int(valorGas[1]) - 2
+    valorGas[1] = 0 if valorGas[1] < 0 else valorGas[1]
     return {
         'valor': int(valorGas[1])
     }
@@ -177,11 +221,73 @@ def sensor_amperagem():
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    return {
-        'id': 1,
-        'nome': 'Geraldo Nelas',
-        'email': 'geraldinho@157.com'
-    }
+    try:
+        json = request.json
+        login = json['login']
+        senha = json['senha']
+        
+        db = get_db()
+
+        usuario = db.execute(
+            'SELECT * FROM usuario WHERE login=? and senha=?', (login,senha,)
+        ).fetchone()
+
+        if usuario is None:
+            return {
+                'sucesso': False,
+                'erro': 'Login ou senha incorreta'
+            }
+        
+        return {
+            'id': usuario['id'],
+            'nome': usuario['nome'],
+            'email': usuario['email'],
+        }
+
+    except Exception as e:
+        
+        return {
+            'sucesso': False
+        }
+
+@app.route('/api/criar-usuario', methods=['POST'])
+def criar_usuario():
+    
+    try:
+        json = request.json
+        nome = json['nome']
+        email = json['email']
+        login = json['login']
+        senha = json['senha']
+        
+        db = get_db()
+
+        usuario = db.execute(
+            'SELECT * FROM usuario WHERE email=? or login=?', (email,login,)
+        ).fetchone()
+
+        if usuario is not None:
+            return {
+                'sucesso': False,
+                'erro': 'E-mail ou login já cadastrado.'
+            }
+        
+        db.execute(
+            'INSERT INTO usuario (nome, email, login, senha)'
+            ' VALUES (?, ?, ?, ?)',
+            (nome, email, login, senha)
+        )
+
+        db.commit()
+
+        return {
+            'sucesso': True
+        }
+    except Exception as e:
+        
+        return {
+            'sucesso': False
+        }
 
 if __name__ == "__main__":
     app.run("0.0.0.0",6969)
