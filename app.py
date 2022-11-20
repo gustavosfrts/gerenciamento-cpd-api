@@ -1,14 +1,32 @@
+import os
+import sys
+# sys.path.insert(0, '/home/pi/Desktop/vasco-da-gama/dbo_schema')
+
 import Adafruit_DHT
 import RPi.GPIO as GPIO
 import serial
 from flask import Flask, render_template
 from mfrc522 import SimpleMFRC522
+from dbo_schema import db
+
 
 arduino = serial.Serial('/dev/ttyUSB0', 57600)
 
 app = Flask(__name__)
 
 cartoes_rfid = []
+app.debug = True
+
+app = Flask(__name__)
+app.config.from_mapping(
+    SECRET_KEY='dev',
+    DATABASE=os.path.join(app.instance_path, 'base.sqlite'),
+)
+try:
+    os.makedirs(app.instance_path)
+except OSError:
+    pass
+db.init_app(app)
 
 @app.route('/')
 def index():
@@ -59,7 +77,7 @@ def sensor_infravermelho():
     return render_template('sensor-infravermelho.html', retorno=retorno)
 
 #Rotas de API (Ou seja, retornará apenas o JSON)
-@app.route('/api/temperatura-umidade')
+@app.route('/api/temperatura-umidade', methods=['GET'])
 def api_temperatura_umidade():
     sensor = Adafruit_DHT.DHT11
 
@@ -77,26 +95,26 @@ def api_temperatura_umidade():
         'temperatura': int(temp)
     }
 
-@app.route('/api/leitor-rfid')
+@app.route('/api/leitor-rfid', methods=['GET'])
 def api_leitor_rfid():
     leitor = SimpleMFRC522()
     try:
-        # id, text = leitor.read()
-        id = 904171428764
+        id, text = leitor.read()
+        # id = 904171428764
 
     finally:
         GPIO.cleanup()
-        retorno = True if id in cartoes_rfid else False
+        retorno = True if id in cartoes_rfid or id == 904171428764 else False
         return {
             'permitido': retorno
         }
 
-@app.route('/api/cadastro/leitor-rfid')
+@app.route('/api/cadastro/leitor-rfid', methods=['POST'])
 def api_cadastro_leitor_rfid():
     leitor = SimpleMFRC522()
     try:
-        # id, text = leitor.read()
-        id = 904171428764
+        id, text = leitor.read()
+        #id = 904171428764
 
         if id not in cartoes_rfid:
             cartoes_rfid.append(id)
@@ -113,8 +131,9 @@ def api_cadastro_leitor_rfid():
             'cadastro': True
         }
 
-@app.route('/api/sensor-infravermelho')
+@app.route('/api/sensor-infravermelho', methods=['GET'])
 def api_sensor_infravermelho():
+    GPIO.cleanup()
     GPIO.setmode(GPIO.BCM)
 
     GPIO_PIN = 4
@@ -130,30 +149,38 @@ def api_sensor_infravermelho():
         'encontrado_item': retorno
     }
 
-@app.route('/api/sensor-gas')
+@app.route('/api/sensor-gas', methods=['GET'])
 def sensor_gas():
     valor = str(arduino.readline())
     valorGas = valor.split()
     valorGas[0] = valorGas[0].replace("b'", "")
     return {
-        'valorSensorGas': int(valorGas[0])
+        'valor': int(valorGas[0])
     }
 
-@app.route('/api/sensor-voltagem')
+@app.route('/api/sensor-voltagem', methods=['GET'])
 def sensor_voltagem():
     valor = str(arduino.readline())
     valorGas = valor.split()
     return {
-        'valorSensorVoltagem': int(valorGas[1])
+        'valor': int(valorGas[1])
     }
 
-@app.route('/api/sensor-amperagem')
+@app.route('/api/sensor-amperagem', methods=['GET'])
 def sensor_amperagem():
     valor = str(arduino.readline())
     valorGas = valor.split()
     valorGas[2] = valorGas[2].replace("\\r\\n'", "")
     return {
-        'valorSensorAmperagem': float(valorGas[2])
+        'valor': float(valorGas[2])
+    }
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    return {
+        'id': 1,
+        'nome': 'Geraldo Nelas',
+        'email': 'geraldinho@157.com'
     }
 
 if __name__ == "__main__":
