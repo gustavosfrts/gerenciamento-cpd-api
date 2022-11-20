@@ -95,16 +95,13 @@ def api_temperatura_umidade():
         'temperatura': int(temp)
     }
 
-@app.route('/api/leitor-rfid', methods=['GET'])
-def api_leitor_rfid():
+@app.route('/api/leitor-rfid/<usuarioId>', methods=['GET'])
+def api_leitor_rfid(usuarioId):
     leitor = SimpleMFRC522()
     try:
         numero_cartao, text = leitor.read()
         
         GPIO.cleanup()
-
-        json = request.json
-        usuarioId = json['usuarioId']
 
         db = get_db()
 
@@ -162,13 +159,15 @@ def api_cadastro_leitor_rfid():
             }
         
         return {
-            'cadastro': True
+            'cadastro': True,
+            'erro': None
         }
 
     except:
         GPIO.cleanup()
         return {
-            'cadastro': False
+            'cadastro': False,
+            'erro': None
         }
 
 @app.route('/api/sensor-infravermelho', methods=['GET'])
@@ -234,6 +233,9 @@ def login():
 
         if usuario is None:
             return {
+                'id': None,
+                'nome': None,
+                'email': None,
                 'sucesso': False,
                 'erro': 'Login ou senha incorreta'
             }
@@ -242,6 +244,8 @@ def login():
             'id': usuario['id'],
             'nome': usuario['nome'],
             'email': usuario['email'],
+            'sucesso': True,
+            'erro': None
         }
 
     except Exception as e:
@@ -281,12 +285,14 @@ def criar_usuario():
         db.commit()
 
         return {
-            'sucesso': True
+            'sucesso': True,
+            'erro': None
         }
     except Exception as e:
         
         return {
-            'sucesso': False
+            'sucesso': False,
+            'erro': None
         }
 
 if __name__ == "__main__":
