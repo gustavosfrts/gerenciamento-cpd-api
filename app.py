@@ -10,12 +10,12 @@ from mfrc522 import SimpleMFRC522
 from dbo_schema import db
 from dbo_schema.db import get_db
 
+from flask_cors import CORS
 
 arduino = serial.Serial('/dev/ttyUSB0', 57600)
 
 app = Flask(__name__)
 
-app = Flask(__name__)
 app.config.from_mapping(
     SECRET_KEY='dev',
     DATABASE=os.path.join(app.instance_path, 'base.sqlite'),
@@ -25,6 +25,7 @@ try:
 except OSError:
     pass
 
+CORS(app)
 app.debug = True
 db.init_app(app)
 
@@ -81,7 +82,7 @@ def sensor_infravermelho():
 def api_temperatura_umidade():
     sensor = Adafruit_DHT.DHT11
 
-    GPIO.setmode(GPIO.BOARD)
+    GPIO.setmode(GPIO.BCM)
     
     pino_sensor = 23
     
@@ -172,7 +173,7 @@ def api_cadastro_leitor_rfid():
 
 @app.route('/api/sensor-infravermelho', methods=['GET'])
 def api_sensor_infravermelho():
-    GPIO.cleanup()
+    
     GPIO.setmode(GPIO.BCM)
 
     GPIO_PIN = 4
@@ -221,6 +222,7 @@ def sensor_amperagem():
 @app.route('/api/login', methods=['POST'])
 def login():
     try:
+        print(request.json)
         json = request.json
         login = json['login']
         senha = json['senha']
